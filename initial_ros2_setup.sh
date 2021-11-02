@@ -4,6 +4,8 @@ ENABLE_BUILD=true
 ENABLE_ROS2_MASTER=false
 ENABLE_SLAM_TOOLBOX=true
 ROS_ROOT=""
+ROS2_DISTRO="galactic"
+NAV2_DISTRO=""
 
 setup_ros2_environment()
 {
@@ -40,22 +42,27 @@ setup_ros2_environment()
   libcunit1-dev
   
     #install Gazebo 
-    sudo apt install --no-install-recommends -y \
-	libgazebo9-dev \
-	gazebo9 \
-	gazebo9-common \
-	gazebo9-plugin-base
+    #sudo apt install --no-install-recommends -y \
+#	libgazebo9-dev \
+#	gazebo9 \
+#	gazebo9-common \
+#	gazebo9-plugin-base
 
   return_to_root_dir
 
 }
 
 if [ "$ROS2_DISTRO" = "" ]; then
-  export ROS2_DISTRO=foxy
+  export ROS2_DISTRO=foxy-devel
   ROS_ROOT=ros2_foxy_ws
+  NAV2_DISTRO=foxy-devel
+elif [ "$ROS2_DISTRO" = "galactic" ]; then
+  export ROS2_DISTRO=galactic
+  ROS_ROOT=ros2_galactic_ws
+  NAV2_DISTRO=galactic
 fi
-if [ "$ROS2_DISTRO" != "foxy" ]; then
-  echo "ROS2_DISTRO variable must be set to foxy"
+if [ "$ROS2_DISTRO" != "foxy" ] && [ "$ROS2_DISTRO" != "galactic" ]; then
+  echo "ROS2_DISTRO variable must be set to foxy or galactic"
   exit 1
 fi
 
@@ -63,7 +70,9 @@ for opt in "$@" ; do
   case $opt in
     --ros2_master)
       ENABLE_ROS2_MASTER=true
+      ROS2_DISTRO=master
       ROS_ROOT=ros2_master_ws
+      NAV2_DISTRO=master
       shift
     ;;
     --download-only)
@@ -74,11 +83,26 @@ for opt in "$@" ; do
       ENABLE_SLAM_TOOLBOX=false
       shift
     ;;
+    --ros2_foxy)
+      ROS2_DISTRO=foxy-devel
+      ROS_ROOT=ros2_foxy_ws
+      NAV2_DISTRO=foxy-devel
+      shift
+    ;;
+    --ros2_galactic)
+      ROS2_DISTRO=galactic
+      ROS_ROOT=ros2_galactic_ws
+      NAV2_DISTRO=galactic
+      shift
+    ;;
     *)
       echo "Invalid option: $opt"
       echo "Valid options:"
-      echo "--no-ros2       Uses the binary distribution of ROS2 foxy"
-      echo "--download-only Skips the build step and only downloads the code"
+      echo "--no-ros2       	Uses the binary distribution of ROS2 foxy"
+      echo "--ros2_master   	Download ROS2 master source code "
+      echo "--ros2_foxy     	Download ROS2 foxy-devel source code "
+      echo "--ros2_galactic 	Download ROS2 galactic source code "
+      echo "--download-only 	Skips the build step and only downloads the code"
       echo "--no-download-slam_toolbox Skips the slam_toolbox source code download"
       exit 1
     ;;
@@ -102,13 +126,13 @@ download_ros2_master() {
   return_to_root_dir
 }
 
-download_ros2_foxy() {
-  echo "Downloading ROS 2 Foxy Release version"
-  mkdir -p ros2_foxy_ws/src
-  cd ros2_foxy_ws
+download_ros2() {
+  echo "Downloading ROS 2 $ROS2_DISTRO version"
+  mkdir -p $ROS_ROOT/src
+  cd $ROS_ROOT
   #mv -i ros2.repos ros2.repos.old
   #download release version
-  wget https://raw.githubusercontent.com/ros2/ros2/foxy-release/ros2.repos
+  wget https://raw.githubusercontent.com/ros2/ros2/$ROS2_DISTRO/ros2.repos
   #download development branch
   #wget https://raw.githubusercontent.com/ros2/ros2/foxy/ros2.repos
   #download lastest branch
@@ -121,7 +145,7 @@ download_ros2_foxy() {
   #update the repositories that you have already checked out with the following command 
   #vcs custom --args remote update
   return_to_root_dir
-  echo "Downloading ROS 2 Foxy Release version finished"
+  echo "Downloading ROS 2 $ROS2_DISTRO version finished"
 }
 
 fix_ros2_foxy_build_error() {
@@ -139,7 +163,7 @@ fix_ros2_foxy_build_error() {
 
 }
 
-download_nav2_foxy() {
+download_nav2() {
 
   echo "Downloading the Navigation2 and its dependencies"
   mkdir -p navigation2_ws/src
@@ -148,9 +172,11 @@ download_nav2_foxy() {
     vcs import src < custom_nav2.repos
   else
     cd src
-    git clone https://github.com/ros-planning/navigation2.git --branch foxy-devel
+    git clone https://github.com/ros-planning/navigation2.git --branch $NAV2_DISTRO
   fi
-  fix_ros2_foxy_build_error
+  if [ "$ROS2_DISTRO" = "foxy-devel" ]; then
+    fix_ros2_foxy_build_error
+  fi
   
   return_to_root_dir
 }
@@ -169,36 +195,65 @@ download_nav2_foxy() {
 
 generate_nav2_depends()
 {
+  if [$ROS2_DISTRO = 'foxy' ]; then
    echo  \
-  "repositories:
-  BehaviorTree/BehaviorTree.CPP:
-    type: git
-    url: https://github.com/BehaviorTree/BehaviorTree.CPP.git
-    version: master
-  ros/angles:
-    type: git
-    url: https://github.com/ros/angles.git
-    version: ros2
-  ros-simulation/gazebo_ros_pkgs:
-    type: git
-    url: https://github.com/ros-simulation/gazebo_ros_pkgs.git
-    version: foxy
-  ros-perception/image_common:
-    type: git
-    url: https://github.com/ros-perception/image_common.git
-    version: ros2
-  ros-perception/vision_opencv:
-    type: git
-    url: https://github.com/ros-perception/vision_opencv.git
-    version: ros2
-  ros/bond_core:
-    type: git
-    url: https://github.com/ros/bond_core.git
-    version: foxy-devel
-  ompl/ompl:
-    type: git
-    url: https://github.com/ompl/ompl.git
-    version: 1.5.0" > ${CWD}/navigation2_ws/src/navigation2/tools/foxy_nav2_dependencies.repos
+	  "repositories:
+	  BehaviorTree/BehaviorTree.CPP:
+	    type: git
+	    url: https://github.com/BehaviorTree/BehaviorTree.CPP.git
+	    version: master
+	  ros/angles:
+	    type: git
+	    url: https://github.com/ros/angles.git
+	    version: ros2
+	  ros-simulation/gazebo_ros_pkgs:
+	    type: git
+	    url: https://github.com/ros-simulation/gazebo_ros_pkgs.git
+	    version: $ROS2_DISTRO
+	  ros-perception/image_common:
+	    type: git
+	    url: https://github.com/ros-perception/image_common.git
+	    version: ros2
+	  ros-perception/vision_opencv:
+	    type: git
+	    url: https://github.com/ros-perception/vision_opencv.git
+	    version: ros2
+	  ros/bond_core:
+	    type: git
+	    url: https://github.com/ros/bond_core.git
+	    version: ros2
+	  ompl/ompl:
+	    type: git
+	    url: https://github.com/ompl/ompl.git
+	    version: 1.5.0" > ${CWD}/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
+   elif [$ROS2_DISTRO = 'galactic' ]; then
+     echo  \
+	  "repositories:
+	  BehaviorTree/BehaviorTree.CPP:
+	    type: git
+	    url: https://github.com/BehaviorTree/BehaviorTree.CPP.git
+	    version: master
+	  ros/angles:
+	    type: git
+	    url: https://github.com/ros/angles.git
+	    version: ros2
+	  ros-simulation/gazebo_ros_pkgs:
+	    type: git
+	    url: https://github.com/ros-simulation/gazebo_ros_pkgs.git
+	    version: $ROS2_DISTRO
+	  ros-perception/vision_opencv:
+	    type: git
+	    url: https://github.com/ros-perception/vision_opencv.git
+	    version: ros2
+	  ros/bond_core:
+	    type: git
+	    url: https://github.com/ros/bond_core.git
+	    version: ros2
+	  ompl/ompl:
+	    type: git
+	    url: https://github.com/ompl/ompl.git
+	    version: 1.5.0" > ${CWD}/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
+  fi
 }
 
 
@@ -207,28 +262,28 @@ download_nav2_depends() {
   mkdir -p ros2_nav_dependencies_ws/src
   cd ros2_nav_dependencies_ws
   generate_nav2_depends
-  vcs import src < ${CWD}/navigation2_ws/src/navigation2/tools/foxy_nav2_dependencies.repos
+  vcs import src < ${CWD}/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
   vcs pull src
   return_to_root_dir
   echo "Downloading the dependencies workspace finished!"
 }
 
-download_slam_toolbox_foxy() {
+download_slam_toolbox() {
   return_to_root_dir
-  echo "Downloading slam_toolbox foxy-devel release"
+  echo "Downloading slam_toolbox $ROS2_DISTRO"
   mkdir -p slam_toolbox_ws/src
   cd slam_toolbox_ws/src
-  git clone https://github.com/SteveMacenski/slam_toolbox.git -b foxy-devel
+  git clone https://github.com/SteveMacenski/slam_toolbox.git -b $ROS2_DISTRO
   #git clone -b foxy-devel git@github.com:stevemacenski/slam_toolbox.git
   return_to_root_dir
-  echo "Downloading slam_toolbox foxy-devel release finished!"
+  echo "Downloading slam_toolbox $ROS2_DISTRO finished!"
 }
 
-download_turtlebot3_foxy() {
+download_turtlebot3() {
   echo "Downloading Turtlebot3 source code"
   mkdir -p turtlebot3_ws/src
   cd turtlebot3_ws
-  wget https://raw.githubusercontent.com/ROBOTIS-GIT/turtlebot3/foxy-devel/turtlebot3.repos
+  wget https://raw.githubusercontent.com/ROBOTIS-GIT/turtlebot3/$ROS2_DISTRO-devel/turtlebot3.repos
   vcs import src < turtlebot3.repos
   return_to_root_dir
   echo "Downloading Turtlebot3 source code finished!"
@@ -247,20 +302,20 @@ checkpoint() {
 
 download_all() {
   checkpoint setup_ros2_environment
-  checkpoint download_ros2_foxy
+  checkpoint download_ros2
   if [ "$ENABLE_ROS2_MASTER" = true ]; then
     checkpoint download_ros2_master
   fi
-  checkpoint download_nav2_foxy
+  checkpoint download_nav2
   checkpoint download_nav2_depends
-  checkpoint download_slam_toolbox_foxy
-  checkpoint download_turtlebot3_foxy
+  checkpoint download_slam_toolbox
+  checkpoint download_turtlebot3
   return_to_root_dir
 }
 
 setup_ros2_env() {
 
-  source $CWD/ros2_foxy_ws/install/setup.bash
+  source $CWD/$ROS_ROOT/install/setup.bash
 }
 
 setup_nav2_env() {
@@ -289,15 +344,14 @@ setup_env_all() {
 
 build_all() {
 
-  echo "Start building ros2 foxy source code"
+  echo "Start building ros2 source code"
   #fix ros2 foxy build error
-  echo ${ROS_ROOT}
-  fix_ros2_foxy_build_error
-  
+  echo $ROS_ROOT
+    
   #build ros2 foxy
-  checkpoint build_ros2_foxy
+  checkpoint build_ros2
   #setup ros2 setup_ros2_enironment.sh
-  echo "Setting up ros2 foxy environment"
+  echo "Setting up ros2 environment"
   setup_ros2_env
   
   #build nav2\slam_toolbox\turtlebot3
@@ -315,15 +369,15 @@ build_all() {
 }
 
 rosdep_install() {
-  rosdep install -y -r -q --from-paths . --ignore-src --rosdistro foxy --skip-keys "catkin"
+  rosdep install -y -r -q --from-paths . --ignore-src --rosdistro $ROS2_DISTRO --skip-keys "catkin"
   #sudo rosdep init
   #rosdep update
   #rosdep install --from-paths src --ignore-src -y --skip-keys "fastcdr rti-connext-dds-5.3.1 urdfdom_headers"
 }
 
-build_ros2_foxy() {
+build_ros2() {
   return_to_root_dir
-  cd ros2_foxy_ws
+  cd $ROS_ROOT
   colcon build --symlink-install --packages-skip ros1_bridge
   return_to_root_dir
 }
@@ -357,7 +411,7 @@ build_ros_bridge() {
 
   # Update the ROS1 bridge
   if test "$ENABLE_ROS1" = true && test "$ENABLE_ROS2" = true ; then
-    cd $CWD/ros2_foxy_ws
+    cd $CWD/$ROS_ROOT
     (setup_ros2_env && setup_nav2_env && colcon build --symlink-install --packages-select ros1_bridge --cmake-force-configure)
   fi
   return_to_root_dir
@@ -391,10 +445,9 @@ echo
 if [ "$REPLY" = "y" ]; then
   download_all
   echo "==========Source code downloading finished!======================"
-  fix_ros2_foxy_build_error
+  
   rosdep_install
   echo "==========rosdep_install finished!======================"
-  echo "==========fix_ros2_foxy_build_error finished!======================"
   #if [ "$ENABLE_BUILD" = true ]; then
   #  $CWD/navigation2_ws/src/navigation2/tools/build_all.sh
   #fi
