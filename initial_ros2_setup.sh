@@ -195,11 +195,11 @@ download_nav2() {
 
 generate_nav2_depends()
 {
-  if [$ROS2_DISTRO = 'foxy' ]; then
-   echo  \
-	  "repositories:
-	  BehaviorTree/BehaviorTree.CPP:
-	    type: git
+  if [ "$ROS2_DISTRO" = "foxy" ]; then
+   echo \
+          "repositories:
+          BehaviorTree/BehaviorTree.CPP:
+            type: git
 	    url: https://github.com/BehaviorTree/BehaviorTree.CPP.git
 	    version: master
 	  ros/angles:
@@ -225,43 +225,45 @@ generate_nav2_depends()
 	  ompl/ompl:
 	    type: git
 	    url: https://github.com/ompl/ompl.git
-	    version: 1.5.0" > ${CWD}/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
-   elif [$ROS2_DISTRO = 'galactic' ]; then
+	    version: 1.5.0" > $CWD/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
+   elif [ "$ROS2_DISTRO" = "galactic" ]; then
      echo  \
-	  "repositories:
-	  BehaviorTree/BehaviorTree.CPP:
-	    type: git
-	    url: https://github.com/BehaviorTree/BehaviorTree.CPP.git
-	    version: master
-	  ros/angles:
-	    type: git
-	    url: https://github.com/ros/angles.git
-	    version: ros2
-	  ros-simulation/gazebo_ros_pkgs:
-	    type: git
-	    url: https://github.com/ros-simulation/gazebo_ros_pkgs.git
-	    version: $ROS2_DISTRO
-	  ros-perception/vision_opencv:
-	    type: git
-	    url: https://github.com/ros-perception/vision_opencv.git
-	    version: ros2
-	  ros/bond_core:
-	    type: git
-	    url: https://github.com/ros/bond_core.git
-	    version: ros2
-	  ompl/ompl:
-	    type: git
-	    url: https://github.com/ompl/ompl.git
-	    version: 1.5.0" > ${CWD}/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
+          "repositories:
+          BehaviorTree/BehaviorTree.CPP:
+            type: git
+            url: https://github.com/BehaviorTree/BehaviorTree.CPP.git
+            version: master
+          ros/angles:
+            type: git
+            url: https://github.com/ros/angles.git
+            version: ros2
+          ros-simulation/gazebo_ros_pkgs:
+            type: git
+            url: https://github.com/ros-simulation/gazebo_ros_pkgs.git
+            version: '$ROS2_DISTRO'
+          ros-perception/vision_opencv:
+            type: git
+            url: https://github.com/ros-perception/vision_opencv.git
+            version: ros2
+          ros/bond_core:
+            type: git
+            url: https://github.com/ros/bond_core.git
+            version: ros2
+          ompl/ompl:
+            type: git
+            url: https://github.com/ompl/ompl.git
+            version: 1.5.0" > $CWD/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
   fi
 }
 
 
 download_nav2_depends() {
   echo "Downloading the dependencies workspace"
+  return_to_root_dir
+  checkpoint generate_nav2_depends
+
   mkdir -p ros2_nav_dependencies_ws/src
   cd ros2_nav_dependencies_ws
-  generate_nav2_depends
   vcs import src < ${CWD}/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
   vcs pull src
   return_to_root_dir
@@ -369,6 +371,8 @@ build_all() {
 }
 
 rosdep_install() {
+  #sudo rosdep init
+  rosdep update
   rosdep install -y -r -q --from-paths . --ignore-src --rosdistro $ROS2_DISTRO --skip-keys "catkin"
   #sudo rosdep init
   #rosdep update
