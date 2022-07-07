@@ -5,7 +5,15 @@ ENABLE_ROS2_MASTER=false
 ENABLE_SLAM_TOOLBOX=true
 ROS_ROOT=""
 ROS2_DISTRO="galactic"
+ROS2_DISTRO="humble"
 NAV2_DISTRO=""
+
+
+
+######################################################################################
+#         The following section is ros2 source code download and building
+######################################################################################
+
 
 setup_ros2_environment()
 {
@@ -26,7 +34,7 @@ setup_ros2_environment()
 
     # Add the ROS2 apt repository
     sudo apt update && sudo apt install -y curl gnupg2 lsb-release
-    sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key  -o /usr/share/keyrings/ros-archive-keyring.gpg
+    sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
 
 
@@ -38,18 +46,42 @@ setup_ros2_environment()
   libasio-dev \
   libtinyxml2-dev
     # install Cyclone DDS dependencies
-    sudo apt install --no-install-recommends -y \
-  libcunit1-dev
-  
-    #install Gazebo 
-    #sudo apt install --no-install-recommends -y \
-#	libgazebo9-dev \
-#	gazebo9 \
-#	gazebo9-common \
-#	gazebo9-plugin-base
+    sudo apt install --no-install-recommends -y libcunit1-dev
+    
+    # install nav2 depends lib boost
+    sudo apt-get install libboost-all-dev
+    sudo apt-get install libbondcpp-dev
+    sudo apt-get install ros-humble-diagnostic-updater
+    sudo apt-get install libudev-dev 
+
+  install_gazebo
+  install_rviz
 
   return_to_root_dir
 
+}
+
+install_gazebo() {
+    #install Gazebo9
+    #sudo apt install --no-install-recommends -y \
+    #    libgazebo9-dev \
+    #    gazebo9 \
+    #    gazebo9-common \
+    #    gazebo9-plugin-base
+	
+    #install Gazebo9
+    sudo sh -c 'echo "deb http://packages.osrfoundation.org/gazebo/ubuntu-stable `lsb_release -cs` main" > /etc/apt/sources.list.d/gazebo-stable.list'
+    wget https://packages.osrfoundation.org/gazebo.key -O - | sudo apt-key add -
+    sudo apt-get update
+    sudo apt-get install gazebo11
+    sudo apt-get install libgazebo11-dev
+    sudo apt-get install gazebo11-common
+    sudo apt-get install gazebo11-plugin-base
+}
+
+install_rviz() {
+
+    sudo apt-get -y install rviz
 }
 
 if [ "$ROS2_DISTRO" = "" ]; then
@@ -60,9 +92,14 @@ elif [ "$ROS2_DISTRO" = "galactic" ]; then
   export ROS2_DISTRO=galactic
   ROS_ROOT=ros2_galactic_ws
   NAV2_DISTRO=galactic
+elif [ "$ROS2_DISTRO" = "humble" ]; then
+  export ROS2_DISTRO=humble
+  ROS_ROOT=ros2_humble_ws
+  NAV2_DISTRO=humble
 fi
-if [ "$ROS2_DISTRO" != "foxy" ] && [ "$ROS2_DISTRO" != "galactic" ]; then
-  echo "ROS2_DISTRO variable must be set to foxy or galactic"
+
+if [ "$ROS2_DISTRO" != "foxy" ] && [ "$ROS2_DISTRO" != "galactic" ] && [ "$ROS2_DISTRO" != "humble" ]; then
+  echo "ROS2_DISTRO variable must be set !"
   exit 1
 fi
 
@@ -83,6 +120,12 @@ for opt in "$@" ; do
       ENABLE_SLAM_TOOLBOX=false
       shift
     ;;
+    --ros2_humble)
+      ROS2_DISTRO=humble
+      ROS_ROOT=ros2_humble_ws
+      NAV2_DISTRO=humble
+      shift
+    ;;
     --ros2_foxy)
       ROS2_DISTRO=foxy-devel
       ROS_ROOT=ros2_foxy_ws
@@ -100,6 +143,7 @@ for opt in "$@" ; do
       echo "Valid options:"
       echo "--no-ros2       	Uses the binary distribution of ROS2 foxy"
       echo "--ros2_master   	Download ROS2 master source code "
+      echo "--ros2_humble   	Download ROS2 humble source code "
       echo "--ros2_foxy     	Download ROS2 foxy-devel source code "
       echo "--ros2_galactic 	Download ROS2 galactic source code "
       echo "--download-only 	Skips the build step and only downloads the code"
@@ -148,6 +192,24 @@ download_ros2() {
   echo "Downloading ROS 2 $ROS2_DISTRO version finished"
 }
 
+rosdep_install() {
+  #sudo rosdep init
+  #rosdep update
+  #rosdep install -y -r -q --from-paths . --ignore-src --rosdistro $ROS2_DISTRO --skip-keys "catkin"
+  cd $ROS_ROOT
+  if [ "$ROS2_DISTRO" = "humble" ]; then
+      #sudo rosdep init
+      rosdep update
+      #rosdep install --from-paths src --ignore-src -y --skip-keys "fastcdr rti-connext-dds-6.0.1 urdfdom_headers"
+      rosdep install --from-paths src --ignore-src --rosdistro $ROS2_DISTRO -y --skip-keys "fastcdr fastrtps rti-connext-dds-6.0.1 urdfdom_headers"
+  else # for foxy and earlier version
+      #sudo rosdep init
+      rosdep update
+      rosdep install --from-paths src --ignore-src -y --skip-keys "fastcdr rti-connext-dds-5.3.1 urdfdom_headers"
+  fi
+  return_to_root_dir
+}
+
 fix_ros2_foxy_build_error() {
   # fix broken package.xml in test_pluginlib that crops up if/when rosdep is run again
   #
@@ -163,6 +225,107 @@ fix_ros2_foxy_build_error() {
 
 }
 
+###########################################################################################
+# fix ros2 humble download and build errors 
+# NOTICE: you need to do this manually if you can not download the packages directly.
+
+#1
+# git clone https://github.com/ros/console_bridge.git
+# tar -c ./console_bridge/ |gzip -n >console_bridge_1.0.2.tar.gz
+# md5sum console_bridge_1.0.2.tar.gz
+# replace the following 
+  # Download and build console_bridge
+  #externalproject_add(console_bridge-1.0.2
+  #  URL /work/ROS2_WS/ros2_humble_ws/humble_build_fix/console_bridge_1.0.2.tar.gz
+  #  URL_MD5 b670ad938693082b4bb48110d721e9db
+#2
+    #URL https://github.com/OGRECave/ogre/archive/v1.12.1.zip
+    #URL /work/ROS2_WS/ros2_humble_ws/humble_build_fix/ogre-1.12.1.zip 
+
+#3  
+
+#ExternalProject_Add(ext-singleproducerconsumer
+#  PREFIX singleproducerconsumer
+#  DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}/download
+#  URL https://github.com/cameron314/readerwriterqueue/archive/ef7dfbf553288064347d51b8ac335f1ca489032a.zip
+#  URL /work/ROS2_WS/ros2_humble_ws/humble_build_fix/readerwriterqueue-ef7dfbf553288064347d51b8ac335f1ca489032a.zip
+  
+# Concurrent and blocking concurrent queue by moodycamel - header only, don't build, install
+#ExternalProject_Add(ext-concurrentqueue
+ # PREFIX concurrentqueue
+ # DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}/download
+ # #URL https://github.com/cameron314/concurrentqueue/archive/8f65a8734d77c3cc00d74c0532efca872931d3ce.zip
+ # URL /work/ROS2_WS/ros2_humble_ws/humble_build_fix/concurrentqueue-8f65a8734d77c3cc00d74c0532efca872931d3ce.zip
+ 
+#4
+# zlib-1.2.11.tar.gz
+
+
+#build error
+#--- stderr: nav2_util                               
+#CMake Error at CMakeLists.txt:17 (find_package):
+#  By not providing "Findbondcpp.cmake" in CMAKE_MODULE_PATH this project has
+#  asked CMake to find a package configuration file provided by "bondcpp", but
+#  CMake did not find one.
+#
+#  Could not find a package configuration file provided by "bondcpp" with any
+#  of the following names:
+#
+#    bondcppConfig.cmake
+#    bondcpp-config.cmake
+
+# fix can not find libignition-math6.so.6.10.0
+# sudo ln -s /usr/lib/x86_64-linux-gnu/libignition-math6.so.6 /usr/lib/x86_64-linux-gnu/libignition-math6.so.6.10.0
+
+# build error can not find gazebo/common/Timer.hh
+# add findpackage(gazebo, REQUIRED) to CMakelist.txt of the packages
+
+#build error diagnostic_updater
+#  add the following line to the end of ros2.repos
+#  ros2/diagnostics:
+#    type: git
+#    url: https://github.com/ros/diagnostics.git
+#    version: ros2-devel
+############################################################################################
+
+
+build_ros2() {
+  return_to_root_dir
+  cd $ROS_ROOT
+  if [ "$ROS2_DISTRO" = "humble" ]; then
+  	colcon build --symlink-install
+  else
+	colcon build --symlink-install --packages-skip ros1_bridge
+  fi
+  return_to_root_dir
+}
+
+build_ros2_master() {
+  return_to_root_dir
+  cd ros2_master_ws
+  colcon build --symlink-install --packages-skip ros1_bridge
+  return_to_root_dir
+}
+
+build_ros_bridge() {
+
+  # Update the ROS1 bridge
+  if test "$ENABLE_ROS1" = true && test "$ENABLE_ROS2" = true ; then
+    cd $CWD/$ROS_ROOT
+    (setup_ros2_env && setup_nav2_env && colcon build --symlink-install --packages-select ros1_bridge --cmake-force-configure)
+  fi
+  return_to_root_dir
+}
+
+setup_ros2_env() {
+
+  source $CWD/$ROS_ROOT/install/setup.bash
+}
+
+
+######################################################################################
+#       The following section is navigation2 source code download and building
+######################################################################################
 download_nav2() {
 
   echo "Downloading the Navigation2 and its dependencies"
@@ -260,15 +423,57 @@ generate_nav2_depends()
 download_nav2_depends() {
   echo "Downloading the dependencies workspace"
   return_to_root_dir
-  checkpoint generate_nav2_depends
-
-  mkdir -p ros2_nav_dependencies_ws/src
-  cd ros2_nav_dependencies_ws
-  vcs import src < ${CWD}/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
+  
+  mkdir -p ros2_nav_depends_ws/src
+  cd ros2_nav_depends_ws
+  
+  if [ "$ROS2_DISTRO" = "humble" ]; then
+      vcs import src < ${CWD}/navigation2_ws/src/navigation2/tools/underlay.repos
+  else
+      checkpoint generate_nav2_depends
+      vcs import src < ${CWD}/navigation2_ws/src/navigation2/tools/ros2_nav2_dependencies.repos
+  fi
+  
   vcs pull src
   return_to_root_dir
   echo "Downloading the dependencies workspace finished!"
 }
+
+
+build_nav2_depends() {
+  echo "Building the ros2_nav_depends_ws workspace"
+  cd $CWD/ros2_nav_depends_ws
+  export ROSDISTRO_INDEX_URL='https://raw.githubusercontent.com/ros2/rosdistro/ros2/index.yaml'
+  setup_ros2_env
+  colcon build --symlink-install
+# colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+  echo "Build the ros2_nav_depends_ws workspace finished"
+  return_to_root_dir
+}
+
+build_nav2() {
+  echo "Building the navigation2_ws workspace"
+  return_to_root_dir
+  cd $CWD/navigation2_ws
+  export ROSDISTRO_INDEX_URL='https://raw.githubusercontent.com/ros2/rosdistro/ros2/index.yaml'
+  setup_ros2_env
+  . $CWD/ros2_nav_depends_ws/install/setup.bash
+  #rosdep update 
+  rosdep install -y -r -q --from-paths src --ignore-src --rosdistro $ROS2_DISTRO
+  colcon build --symlink-install
+  echo "Build the navigation2_ws workspace finished"
+  return_to_root_dir
+}
+
+setup_nav2_env() {
+
+  source $CWD/navigation2_ws/install/setup.bash
+  source $CWD/ros2_nav_depends_ws/install/setup.bash
+}
+
+######################################################################################
+#       The following section is slam_toolbox source code download and building
+######################################################################################
 
 download_slam_toolbox() {
   return_to_root_dir
@@ -281,6 +486,26 @@ download_slam_toolbox() {
   echo "Downloading slam_toolbox $ROS2_DISTRO finished!"
 }
 
+build_slam_toolbox() {
+  echo "Building the slam_toolbox_ws workspace"
+  return_to_root_dir
+  cd slam_toolbox_ws
+  (setup_ros2_env && setup_nav2_env && colcon build --symlink-install)
+  echo "Build the slam_toolbox_ws workspace finished"
+  return_to_root_dir
+}
+
+setup_slam_toolbox_env() {
+
+  source $CWD/slam_toolbox_ws/install/setup.bash
+
+}
+
+
+######################################################################################
+#       The following section is turtlebot3 source code download and building
+######################################################################################
+
 download_turtlebot3() {
   echo "Downloading Turtlebot3 source code"
   mkdir -p turtlebot3_ws/src
@@ -291,16 +516,25 @@ download_turtlebot3() {
   echo "Downloading Turtlebot3 source code finished!"
 }
 
-checkpoint() {
-  local CHECKPOINT_FILE_NAME=.INITIAL_SETUP_$1
-  CHECKPOINT_FILES="${CHECKPOINT_FILES} ${CHECKPOINT_FILE_NAME}"
-  if [ ! -f ${CHECKPOINT_FILE_NAME} ]; then
-    $1
-    touch ${CHECKPOINT_FILE_NAME}
-  else
-    echo "${CHECKPOINT_FILE_NAME} exists. Skipping $1"
-  fi
+build_turtlebot3() {
+  echo "Building the turtlebot3_ws workspace"
+  return_to_root_dir
+  cd turtlebot3_ws
+  (setup_ros2_env && setup_nav2_env && colcon build --symlink-install)
+  echo "Build the turtlebot3_ws workspace finished"
+  return_to_root_dir
 }
+
+setup_turtlebot3_env() {
+
+  source $CWD/turtlebot_ws/install/setup.bash
+  
+}
+
+######################################################################################
+#    The following setction will download and build ros2, nav2, 
+#  slam_toolbox and turtlebot3
+#####################################################################################
 
 download_all() {
   checkpoint setup_ros2_environment
@@ -315,42 +549,13 @@ download_all() {
   return_to_root_dir
 }
 
-setup_ros2_env() {
-
-  source $CWD/$ROS_ROOT/install/setup.bash
-}
-
-setup_nav2_env() {
-
-  source $CWD/navigation2_ws/install/setup.bash
-  source $CWD/ros2_nav_dependencies_ws/install/setup.bash
-}
-
-setup_slam_toolbox_env() {
-
-  source $CWD/slam_toolbox_ws/install/setup.bash
-}
-
-setup_turtlebot3_env() {
-
-  source $CWD/turtlebot_ws/install/setup.bash
-}
-
-setup_env_all() {
-  setup_ros2_env
-  setup_nav2_env
-  setup_slam_toolbox_env
-  setup_turtlebot3_env
-  echo "Sourced Ros2, nav2_depends, nav2, slam_toolbox, turtulebot3 environment!"
-}
-
 build_all() {
 
   echo "Start building ros2 source code"
   #fix ros2 foxy build error
   echo $ROS_ROOT
     
-  #build ros2 foxy
+  #build ros2
   checkpoint build_ros2
   #setup ros2 setup_ros2_enironment.sh
   echo "Setting up ros2 environment"
@@ -370,73 +575,27 @@ build_all() {
   return_to_root_dir
 }
 
-rosdep_install() {
-  #sudo rosdep init
-  rosdep update
-  rosdep install -y -r -q --from-paths . --ignore-src --rosdistro $ROS2_DISTRO --skip-keys "catkin"
-  #sudo rosdep init
-  #rosdep update
-  #rosdep install --from-paths src --ignore-src -y --skip-keys "fastcdr rti-connext-dds-5.3.1 urdfdom_headers"
-}
-
-build_ros2() {
-  return_to_root_dir
-  cd $ROS_ROOT
-  colcon build --symlink-install --packages-skip ros1_bridge
-  return_to_root_dir
-}
-
-build_ros2_master() {
-  return_to_root_dir
-  cd ros2_master_ws
-  colcon build --symlink-install --packages-skip ros1_bridge
-  return_to_root_dir
-}
-
-build_nav2_depends() {
-  cd $CWD/ros2_nav_dependencies_ws
-  export ROSDISTRO_INDEX_URL='https://raw.githubusercontent.com/ros2/rosdistro/ros2/index.yaml'
+setup_env_all() {
   setup_ros2_env
-  colcon build --symlink-install
-  return_to_root_dir
+  setup_nav2_env
+  setup_slam_toolbox_env
+  setup_turtlebot3_env
+  echo "Sourced Ros2, nav2_depends, nav2, slam_toolbox, turtulebot3 environment!"
 }
 
-build_nav2() {
-  return_to_root_dir
-  cd $CWD/navigation2_ws
-  export ROSDISTRO_INDEX_URL='https://raw.githubusercontent.com/ros2/rosdistro/ros2/index.yaml'
-  setup_ros2_env
-  . $CWD/ros2_nav_dependencies_ws/install/setup.bash
-  colcon build --symlink-install
-  return_to_root_dir
-}
-
-build_ros_bridge() {
-
-  # Update the ROS1 bridge
-  if test "$ENABLE_ROS1" = true && test "$ENABLE_ROS2" = true ; then
-    cd $CWD/$ROS_ROOT
-    (setup_ros2_env && setup_nav2_env && colcon build --symlink-install --packages-select ros1_bridge --cmake-force-configure)
+checkpoint() {
+  local CHECKPOINT_FILE_NAME=.INITIAL_SETUP_$1
+  CHECKPOINT_FILES="${CHECKPOINT_FILES} ${CHECKPOINT_FILE_NAME}"
+  if [ ! -f ${CHECKPOINT_FILE_NAME} ]; then
+    $1
+    touch ${CHECKPOINT_FILE_NAME}
+  else
+    echo "${CHECKPOINT_FILE_NAME} exists. Skipping $1"
   fi
-  return_to_root_dir
 }
 
-build_slam_toolbox() {
-  return_to_root_dir
-  cd slam_toolbox_ws
-  (setup_ros2_env && setup_nav2_env && colcon build --symlink-install)
-  return_to_root_dir
-}
-
-build_turtlebot3() {
-  return_to_root_dir
-  cd turtlebot3_ws
-  (setup_ros2_env && setup_nav2_env && colcon build --symlink-install)
-  return_to_root_dir
-}
-
-echo "This script will download the ROS 2 foxy release workspace by default, the"
-echo "dependencies workspace and the ros_navstack_port workspace to the"
+echo "This script will download the ROS2 source code and its dependencies, "
+echo " the navigation2, the slam_toolbox, the turtlebot3 to the"
 echo "current directory and then build them all. There should be no ROS"
 echo "environment variables set at this time."
 echo "If you want to download lastest(master) ros2 release workspace, please add --ros2_master" 
@@ -472,3 +631,4 @@ if [ "$REPLY" = "y" ]; then
   echo "1. Run 'colcon build --symlink-install' from the navigation2 folder"
   echo "2. or run 'make' from navigation2/build/<project> folder"
 fi
+
